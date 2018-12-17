@@ -14,7 +14,6 @@
     name: loggr-syslog-agent
     include:
       stemcell:
-      - os: ubuntu-trusty
       - os: ubuntu-xenial
     exclude:
       jobs:

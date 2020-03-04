@@ -10,13 +10,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	metricsHelpers "code.cloudfoundry.org/go-metric-registry/testhelpers"
 	"code.cloudfoundry.org/go-loggregator/rpc/loggregator_v2"
+	metricsHelpers "code.cloudfoundry.org/go-metric-registry/testhelpers"
 	"code.cloudfoundry.org/loggregator-agent-release/src/internal/testhelper"
 	"code.cloudfoundry.org/loggregator-agent-release/src/pkg/plumbing"
 	"code.cloudfoundry.org/tlsconfig"
@@ -99,9 +100,9 @@ var _ = Describe("PromScraper", func() {
 			promServer2 := newStubPromServer()
 			spyConfigProvider.scrapeConfigs = []scraper.PromScraperConfig{
 				{
-					Port:       promServer.port,
-					SourceID:   "some-id",
-					InstanceID: "some-instance-id",
+					Port:           promServer.port,
+					SourceID:       "some-id",
+					InstanceID:     "some-instance-id",
 					ScrapeInterval: time.Hour,
 				},
 				{
@@ -222,6 +223,86 @@ var _ = Describe("PromScraper", func() {
 
 				Eventually(promServer.requestPaths).Should(Receive(Equal("/other/metrics/endpoint")))
 			})
+		})
+
+		Context("federation", func() {
+			It("scrapes a federation endpoint with params", func() {
+				metricMatches := url.Values{
+					"match[]": {"{__name__=\"a\"}", "{__name__=\"b\"}"},
+				}
+
+				spyConfigProvider.scrapeConfigs = []scraper.PromScraperConfig{{
+					Port:       promServer.port,
+					SourceID:   "some-id",
+					InstanceID: "some-instance-id",
+					Path:       "/federate",
+					Params:     metricMatches,
+				}}
+
+				promServer.resp = promOutput
+
+				ps = app.NewPromScraper(cfg, spyConfigProvider.Configs, metricClient, testLogger)
+				go ps.Run()
+
+				Eventually(promServer.requestPaths).Should(Receive(Equal("/federate")))
+				Eventually(promServer.requestParams).Should(Receive(Equal(metricMatches)))
+			})
+
+			It("does not add params when metric names is empty", func() {
+				spyConfigProvider.scrapeConfigs = []scraper.PromScraperConfig{{
+					Port:       promServer.port,
+					SourceID:   "some-id",
+					InstanceID: "some-instance-id",
+					Path:       "/federate",
+				}}
+
+				promServer.resp = promOutput
+
+				ps = app.NewPromScraper(cfg, spyConfigProvider.Configs, metricClient, testLogger)
+				go ps.Run()
+
+				Eventually(promServer.requestPaths).Should(Receive(Equal("/federate")))
+				Eventually(promServer.requestParams, 5).Should(Receive(HaveLen(0)))
+			})
+		})
+	})
+
+	Context("address config", func() {
+		BeforeEach(func() {
+			promServer = newStubPromServer()
+		})
+
+		It("scrapes a prometheus endpoint at 127.0.0.1 if no address is provided", func() {
+			promServer.resp = promOutput
+			spyConfigProvider.scrapeConfigs = []scraper.PromScraperConfig{{
+				Port:       promServer.port,
+				SourceID:   "some-id",
+				InstanceID: "some-instance-id",
+			}}
+
+			ps = app.NewPromScraper(cfg, spyConfigProvider.Configs, metricClient, testLogger)
+			go ps.Run()
+
+			Eventually(spyAgent.Envelopes).Should(And(
+				ContainElement(buildCounter("node_timex_pps_calibration_total", "some-id", "some-instance-id", 1)),
+			))
+		})
+
+		It("scrapes a prometheus endpoint the address provided", func() {
+			promServer.resp = promOutput
+			spyConfigProvider.scrapeConfigs = []scraper.PromScraperConfig{{
+				Port:       promServer.port,
+				Address:    "127.0.0.1",
+				SourceID:   "some-id",
+				InstanceID: "some-instance-id",
+			}}
+
+			ps = app.NewPromScraper(cfg, spyConfigProvider.Configs, metricClient, testLogger)
+			go ps.Run()
+
+			Eventually(spyAgent.Envelopes).Should(And(
+				ContainElement(buildCounter("node_timex_pps_calibration_total", "some-id", "some-instance-id", 1)),
+			))
 		})
 	})
 
@@ -393,12 +474,14 @@ type stubPromServer struct {
 
 	requestHeaders chan http.Header
 	requestPaths   chan string
+	requestParams  chan url.Values
 }
 
 func newStubPromServer() *stubPromServer {
 	s := &stubPromServer{
 		requestHeaders: make(chan http.Header, 100),
 		requestPaths:   make(chan string, 100),
+		requestParams:  make(chan url.Values, 100),
 	}
 
 	server := httptest.NewServer(s)
@@ -414,6 +497,7 @@ func newStubHttpsPromServer(testLogger *log.Logger, scrapeCerts *testhelper.Test
 	s := &stubPromServer{
 		requestHeaders: make(chan http.Header, 100),
 		requestPaths:   make(chan string, 100),
+		requestParams:  make(chan url.Values, 100),
 	}
 
 	var serverOpts []tlsconfig.ServerOption
@@ -440,6 +524,7 @@ func newStubHttpsPromServer(testLogger *log.Logger, scrapeCerts *testhelper.Test
 func (s *stubPromServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	s.requestHeaders <- req.Header
 	s.requestPaths <- req.URL.Path
+	s.requestParams <- req.URL.Query()
 	w.Write([]byte(s.resp))
 }
 

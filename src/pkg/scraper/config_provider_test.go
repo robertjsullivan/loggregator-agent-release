@@ -48,10 +48,14 @@ var _ = Describe("PromScraper", func() {
 				ScrapeInterval: 100 * time.Millisecond,
 			},
 			scraper.PromScraperConfig{
+				Address:    "1.1.1.1",
 				Port:       "8081",
 				SourceID:   "some-id",
 				InstanceID: "some-instance-id",
 				Scheme:     "https",
+				Params:     map[string][]string{
+					"match[]":  {"{__name__=\"a\"}", "{__name__=\"b\"}"},
+				},
 				ServerName: "some-server",
 				Path:       "/other",
 				Headers: map[string]string{
@@ -103,6 +107,7 @@ source_id: some-id
 instance_id: some-instance-id`
 
 	metricConfigWithAllFieldsSpecifiedTemplate = `---
+address: 1.1.1.1
 port: 8081
 source_id: some-id
 instance_id: some-instance-id
@@ -110,6 +115,10 @@ scrape_interval: 10s
 path: /other
 scheme: https
 server_name: some-server
+params:
+  'match[]':
+  - '{__name__="a"}'
+  - '{__name__="b"}'
 headers:
   Header1: value1
   Header2: value2

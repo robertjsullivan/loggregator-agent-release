@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -128,11 +129,17 @@ func (p *PromScraper) startScraper(scrapeConfig scraper.PromScraperConfig, ingre
 }
 
 func (p *PromScraper) buildScraper(scrapeConfig scraper.PromScraperConfig, client *loggregator.IngressClient) *scraper.Scraper {
+	address := scrapeConfig.Address
+	if address == "" {
+		address = "127.0.0.1"
+	}
+
 	scrapeTarget := scraper.Target{
 		ID:          scrapeConfig.SourceID,
 		InstanceID:  scrapeConfig.InstanceID,
-		MetricURL:   fmt.Sprintf("%s://127.0.0.1:%s/%s", scrapeConfig.Scheme, scrapeConfig.Port, strings.TrimPrefix(scrapeConfig.Path, "/")),
+		MetricURL:   fmt.Sprintf("%s://%s:%s/%s", scrapeConfig.Scheme, address, scrapeConfig.Port, strings.TrimPrefix(scrapeConfig.Path, "/")),
 		Headers:     scrapeConfig.Headers,
+		Params:      scrapeConfig.Params,
 		DefaultTags: scrapeConfig.Labels,
 	}
 
@@ -182,12 +189,13 @@ func (p *PromScraper) Stop() {
 }
 
 func (p *PromScraper) scrape(client *http.Client) scraper.MetricsGetter {
-	return func(addr string, headers map[string]string) (*http.Response, error) {
+	return func(addr string, headers map[string]string, params url.Values) (*http.Response, error) {
 		req, err := http.NewRequest(http.MethodGet, addr, nil)
 		if err != nil {
 			return nil, err
 		}
 
+		req.URL.RawQuery = params.Encode()
 		requestHeader := http.Header{}
 		for k, v := range headers {
 			requestHeader[k] = []string{v}

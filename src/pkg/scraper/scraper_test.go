@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -777,7 +778,7 @@ func newSpyMetricGetter() *spyMetricGetter {
 	}
 }
 
-func (s *spyMetricGetter) Get(addr string, headers map[string]string) (*http.Response, error) {
+func (s *spyMetricGetter) Get(addr string, headers map[string]string, params url.Values) (*http.Response, error) {
 	s.addrs <- addr
 	s.headers <- headers
 

@@ -5,12 +5,14 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"path/filepath"
 	"time"
 )
 
 type PromScraperConfig struct {
 	Port           string            `yaml:"port"`
+	Address        string            `yaml:"address"`
 	SourceID       string            `yaml:"source_id"`
 	InstanceID     string            `yaml:"instance_id"`
 	Scheme         string            `yaml:"scheme"`
@@ -18,6 +20,7 @@ type PromScraperConfig struct {
 	Path           string            `yaml:"path"`
 	Headers        map[string]string `yaml:"headers"`
 	Labels         map[string]string `yaml:"labels"`
+	Params         url.Values        `yaml:"params"`
 	ScrapeInterval time.Duration     `yaml:"scrape_interval"`
 }
 

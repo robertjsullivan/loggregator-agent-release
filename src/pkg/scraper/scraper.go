@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type Target struct {
 	InstanceID  string
 	MetricURL   string
 	Headers     map[string]string
+	Params      url.Values
 	DefaultTags map[string]string
 }
 
@@ -46,7 +48,7 @@ type metricsClient interface {
 	NewGauge(name, helpText string, opts ...metrics.MetricOption) metrics.Gauge
 }
 
-type MetricsGetter func(addr string, headers map[string]string) (*http.Response, error)
+type MetricsGetter func(addr string, headers map[string]string, params url.Values) (*http.Response, error)
 
 func New(
 	t TargetProvider,
@@ -141,7 +143,7 @@ func (s *Scraper) Scrape() error {
 }
 
 func (s *Scraper) scrape(target Target) (map[string]*io_prometheus_client.MetricFamily, error) {
-	resp, err := s.metricsGetter(target.MetricURL, target.Headers)
+	resp, err := s.metricsGetter(target.MetricURL, target.Headers, target.Params)
 	if err != nil {
 		return nil, err
 	}
